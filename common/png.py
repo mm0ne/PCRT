@@ -2,6 +2,7 @@ import zlib
 import struct
 import re
 import os
+import binascii
 import itertools
 
 from common.util import Termcolor, WriteFile, ReadFile, byte2hexstring, int2hexstring
@@ -9,11 +10,12 @@ from common.util import Termcolor, WriteFile, ReadFile, byte2hexstring, int2hexs
 
 class PNG(object):
 
-    def __init__(self, in_file="", out_file="output.png", choices="", mode=0):
+    def __init__(self, in_file="", out_file="output.png", choices="", mode=0, ihdr_bruteforce=False):
         self.in_file = in_file
         self.out_file = out_file
         self.choices = choices
         self.i_mode = mode
+        self.ihdr_bruteforce = ihdr_bruteforce
 
     def __del__(self):
         try:
@@ -444,12 +446,14 @@ class PNG(object):
         # IHDR:length=13(4 bytes)+chunk_type='IHDR'(4 bytes)+chunk_ihdr(length bytes)+crc(4 bytes)
         # chunk_ihdr=width(4 bytes)+height(4 bytes)+left(5 bytes)
         pos, IHDR = self.FindIHDR(data)
+
         if pos == -1:
             print(Termcolor("Detected", "Lost IHDR chunk"))
             return -1
         length = struct.unpack("!I", IHDR[:4])[0]
         chunk_type = IHDR[4:8]
         chunk_ihdr = IHDR[8 : 8 + length]
+        print(chunk_ihdr)
 
         width, height = struct.unpack("!II", chunk_ihdr[:8])
         crc: bytes = IHDR[8 + length : 12 + length]
@@ -463,31 +467,52 @@ class PNG(object):
                     % (int2hexstring(pos + 4 + length), byte2hexstring(crc), byte2hexstring(calc_crc)),
                 )
             )
-            if self.choices != "":
-                choice = self.choices
+            if self.ihdr_bruteforce:
+                print(Termcolor("Notice", "Bruteforcing IHDR dimension...."))
+                found = False
+                for nw in range(4000):
+                    width: bytes = struct.pack(">i", nw)
+                    for nh in range(4000):
+                        height: bytes = struct.pack(">i", nh)
+                        new_idhr_data = chunk_type + width + height + chunk_ihdr[8:]
+                        crc_bf = zlib.crc32(new_idhr_data) & 0xffffffff
+                        if int.from_bytes(crc, byteorder='big') == crc_bf:
+                            IHDR = IHDR[:4] + new_idhr_data + crc_bf.to_bytes(4, 'big')
+                            print(Termcolor("Notice", f"successfully updated IHDR dimension to W: {width} H: {height}"))
+                            found = True
+                            break
+                if not found:
+                    print(new_idhr_data)
+                    print(Termcolor("Error", "Can't find the correct dimension"))
+                    print(Termcolor("Error", "Exiting..."))
+                    exit()
             else:
-                msg = Termcolor("Notice", "Try fixing it? (y or n) [default:y] ")
-                choice = input(msg)
-            if choice == "y" or choice == "":
-                if width > height:
-                    # fix height
-                    for h in range(height, width):
-                        chunk_ihdr = IHDR[8:12] + struct.pack("!I", h) + IHDR[16 : 8 + length]
-                        if self.Checkcrc(chunk_type, chunk_ihdr, calc_crc) is None:
-                            IHDR = IHDR[:8] + chunk_ihdr + calc_crc
-                            print("[Finished] Successfully fix crc")
-                            break
+                if self.choices != "":
+                    choice = self.choices
                 else:
-                    # fix width
-                    for w in range(width, height):
-                        chunk_ihdr = struct.pack("!I", w) + IHDR[12 : 8 + length]
-                        if self.Checkcrc(chunk_type, chunk_ihdr, calc_crc) is None:
-                            IHDR = IHDR[:8] + chunk_ihdr + calc_crc
-                            print("[Finished] Successfully fix crc")
-                            break
+                    msg = Termcolor("Notice", "Try fixing it? (y or n) [default:y] ")
+                    choice = input(msg)
+                if choice == "y" or choice == "":
+                    if width > height:
+                        # fix height
+                        for h in range(height, width):
+                            chunk_ihdr = IHDR[8:12] + struct.pack("!I", h) + IHDR[16 : 8 + length]
+                            if self.Checkcrc(chunk_type, chunk_ihdr, calc_crc) is None:
+                                IHDR = IHDR[:8] + chunk_ihdr + calc_crc
+                                print("[Finished] Successfully fix crc")
+                                break
+                    else:
+                        # fix width
+                        for w in range(width, height):
+                            chunk_ihdr = struct.pack("!I", w) + IHDR[12 : 8 + length]
+                            if self.Checkcrc(chunk_type, chunk_ihdr, calc_crc) is None:
+                                IHDR = IHDR[:8] + chunk_ihdr + calc_crc
+                                print("[Finished] Successfully fix crc")
+                                break
 
         else:
             print("[Finished] Correct IHDR CRC (offset: %s): %s" % (int2hexstring(pos + 4 + length), crc.hex().upper()))
+
         self.file.write(IHDR)
         print("[Finished] IHDR chunk check complete (offset: %s)" % int2hexstring(pos - 4))
 

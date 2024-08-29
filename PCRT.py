@@ -35,7 +35,7 @@ Version: {__version__}
     )
 
     parser.add_argument("-d", "--decompress", help="decompress zlib data file name")
-
+    parser.add_argument("-bf", "--bruteforce", action="store_true", help="Don't fix IHDR CRC to current data, rather bruteforce PNG dimension to match current IHDR CRC. (up to 4000 x 4000)")
     parser.add_argument("-i", "--input", help="Input file name (*.png) [Select from terminal]")
     parser.add_argument("-f", "--file", help="Input file name (*.png) [Select from window]", action="store_true")
     parser.add_argument("-o", "--output", default="output.png", help="Output repaired file name [Default: output.png]")
@@ -83,9 +83,9 @@ Version: {__version__}
                 print("Try 'pip install Tkinter' to use it")
         elif in_file is not None:
             if args.yes is True:
-                my_png = PNG(in_file, out_file, choices="y", mode=mode)
+                my_png = PNG(in_file, out_file, choices="y", mode=mode, ihdr_bruteforce=args.bruteforce)
             else:
-                my_png = PNG(in_file, out_file, mode=mode)
+                my_png = PNG(in_file, out_file, mode=mode, ihdr_bruteforce=args.bruteforce) 
             if args.message is True:
                 my_png.PrintPicInfo()
             elif payload is not None:
