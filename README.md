@@ -4,6 +4,10 @@
 
 ## Description
 
+**Added Bruteforce Dimension feature**
+
+
+
 **PCRT** (PNG Check & Repair Tool) is a tool to help check if PNG image correct and try to auto fix the error. It's cross-platform, which can run on **Windows**, **Linux** and **Mac OS**. 
 
 It can:
